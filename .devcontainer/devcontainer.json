@@ -1,0 +1,16 @@
+{
+    "dockerFile" : "dockerfile",
+    "customizations": {
+        "vscode" :{
+            "extensions": [
+                "ms-vscode.cmake-tools",
+                "ms-vscode.cpptools",
+                "eamodio.gitlens",
+                "mhutchie.git-graph",
+                "ms-azuretools.vscode-docker",
+                "GitHub.vscode-pull-request-github",
+                "ms-python.python"
+            ]
+        }
+    }
+}

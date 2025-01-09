@@ -1,0 +1,24 @@
+ARG BASE_IMAGE
+
+FROM $BASE_IMAGE
+
+# Install system requirements.
+RUN --mount=target=/requirements,type=bind,source=requirements <<EOF
+    set -ex
+
+    apt update
+
+    apt --yes --no-install-recommends install $(grep -vE "^\s*#" /requirements/requirements.system.txt  | tr "\n" " ")
+
+    apt clean && rm -rf /var/lib/apt/lists/*
+EOF
+
+# Create a virtual environment for Python packages.
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
+RUN python3 -m venv $VIRTUAL_ENV
+
+# Install Python requirements.
+RUN --mount=target=/requirements,type=bind,source=requirements <<EOF
+    python3 -m pip install -r /requirements/requirements.python.txt
+EOF
