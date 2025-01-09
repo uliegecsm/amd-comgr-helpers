@@ -1,0 +1,4 @@
+cmake
+git
+make
+python3-venv

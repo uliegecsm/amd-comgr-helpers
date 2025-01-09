@@ -1,0 +1,29 @@
+{
+    "version"   : 5,
+    "configurePresets" : [
+        {
+            "name"          : "default",
+            "displayName"   : "default",
+            "binaryDir"     : "${sourceDir}/build-with-${presetName}",
+            "cacheVariables": {
+                "amd_comgr_ROOT" : "/opt/rocm/"
+            }
+        }
+    ],
+    "buildPresets" : [
+        {
+            "name"            : "default",
+            "configurePreset" : "default",
+            "inheritConfigureEnvironment" : true
+        }
+    ],
+    "testPresets" : [
+        {
+            "name"            : "default",
+            "configurePreset" : "default",
+            "inheritConfigureEnvironment" : true,
+            "output"          : {"outputOnFailure": true},
+            "execution"       : {"noTestsAction": "error", "stopOnFailure": false}
+        }
+    ]
+}

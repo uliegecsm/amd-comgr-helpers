@@ -1,0 +1,8 @@
+# Ignore CMake build directory.
+build-with-*/*
+
+# Python cache stuff.
+*__pycache__*
+
+# VS code stuff.
+.vscode/*
