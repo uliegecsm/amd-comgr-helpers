@@ -87,8 +87,8 @@ jobs:
               run : |
                 rm -rf *
 
-                export PATH=/opt/amd-comgr-helpers:${PATH}
-                whereis amd-comgr-helpers-parse-code-metadata
+                export PATH=/opt/amd-comgr-helpers/bin:${PATH}
+                which amd-comgr-helpers-parse-code-metadata
 
                 export PYTHONPATH=/opt/amd-comgr-helpers/python:${PYTHONPATH}
                 python3 -c "import amd_comgr_helpers.tools.parse_code_metadata as u; print(u);"
