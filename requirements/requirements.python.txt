@@ -1,3 +1,4 @@
 git+https://github.com/uliegecsm/system-helpers
+pyyaml
 pytest
 typeguard
