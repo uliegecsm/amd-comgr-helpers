@@ -1,12 +1,19 @@
+import io
 import json
+import logging
 import os
 import pathlib
+import re
 import subprocess
 import tempfile
+
+import typeguard
+import yaml
 
 from tools.parse_code_metadata import extract_code_objects
 
 SOURCE_CODE = """
+#include <concepts>
 #include <iostream>
 
 #include "hip/hip_runtime.h"
@@ -31,6 +38,13 @@ __global__ void my_kernel(int* const data)
     data[idx] = idx;
 }
 
+template <typename Proj> requires std::same_as<std::invoke_result_t<Proj, int>, int>
+__global__ void complicated(int* const data, Proj proj)
+{
+    const int idx = threadIdx.y;
+    data[idx] = proj(data[idx]);
+}
+
 int main()
 {
     //! Retrieve kernel attributes.
@@ -48,12 +62,13 @@ int main()
     int* data = nullptr;
     CHECK_HIP_CALL(hipMalloc((void**)&data, size * sizeof(int)));
 
-    //! Launch kernel.
+    //! Launch kernels.
     constexpr dim3 grid  {1,    1, 1};
     constexpr dim3 block {1, size, 1};
     constexpr unsigned int shared = 0;
 
-    my_kernel<<<grid, block, shared, stream>>>(data);
+    my_kernel  <<<grid, block, shared, stream>>>(data);
+    complicated<<<grid, block, shared, stream>>>(data, [](const int value) { return value / 2; });
 
     //! Synchronize and cleanup.
     CHECK_HIP_CALL(hipStreamSynchronize(stream));
@@ -62,8 +77,25 @@ int main()
 }
 """
 
-EXPECTED_SGPR_COUNT = 10
-EXPECTED_VGPR_COUNT = 2
+EXPECTED_SGPR_COUNT = {
+    'my_kernel'   : 10,
+    'complicated' : 10,
+}
+EXPECTED_VGPR_COUNT = {
+    'my_kernel'   : 2,
+    'complicated' : 3,
+}
+MANGLED = {
+    'my_kernel'   : '_Z9my_kernelPi',
+    'complicated' : '_Z11complicatedIZ4mainEUliE_Qsr3stdE7same_asINSt13invoke_resultIT_JiEE4typeEiEEvPiS2_',
+}
+
+@typeguard.typechecked
+def demangle(s : str) -> str:
+    for k, v in MANGLED.items():
+        if v == s:
+            return k
+    raise RuntimeError(f'unable to demangle {s}')
 
 def test_kernel_resource_usage_pass_analysis():
     """
@@ -77,7 +109,7 @@ def test_kernel_resource_usage_pass_analysis():
         source.write_text(SOURCE_CODE)
         compilation = subprocess.check_output(
             args = [
-                'hipcc', '--offload-arch=gfx906',
+                'hipcc', '--offload-arch=gfx906', '-std=c++20',
                 '-Rpass-analysis=kernel-resource-usage',
                 '-Wall', '-Wextra', '-Werror',
                 source,
@@ -86,8 +118,12 @@ def test_kernel_resource_usage_pass_analysis():
             cwd = tmpdir,
             stderr = subprocess.STDOUT,
         ).decode()
-        assert f"test.cpp:21:1: remark:     SGPRs: {EXPECTED_SGPR_COUNT} [-Rpass-analysis=kernel-resource-usage]" in compilation
-        assert f"test.cpp:21:1: remark:     VGPRs: {EXPECTED_VGPR_COUNT} [-Rpass-analysis=kernel-resource-usage]" in compilation
+
+        assert f"test.cpp:22:1: remark:     SGPRs: {EXPECTED_SGPR_COUNT['my_kernel']} [-Rpass-analysis=kernel-resource-usage]" in compilation
+        assert f"test.cpp:22:1: remark:     VGPRs: {EXPECTED_VGPR_COUNT['my_kernel']} [-Rpass-analysis=kernel-resource-usage]" in compilation
+
+        assert f"test.cpp:29:1: remark:     SGPRs: {EXPECTED_SGPR_COUNT['complicated']} [-Rpass-analysis=kernel-resource-usage]" in compilation
+        assert f"test.cpp:29:1: remark:     VGPRs: {EXPECTED_VGPR_COUNT['complicated']} [-Rpass-analysis=kernel-resource-usage]" in compilation
 
 def test_kernel_resource_usage_isa_save_temps():
     """
@@ -101,7 +137,7 @@ def test_kernel_resource_usage_isa_save_temps():
         source.write_text(SOURCE_CODE)
         subprocess.check_call(
             args = [
-                'hipcc', '--offload-arch=gfx906',
+                'hipcc', '--offload-arch=gfx906', '-std=c++20',
                 '--save-temps',
                 '-Wall', '-Wextra', '-Werror',
                 source,
@@ -110,9 +146,29 @@ def test_kernel_resource_usage_isa_save_temps():
             cwd = tmpdir,
             stderr = subprocess.STDOUT,
         )
-        assembly = (tmpdir / 'test-hip-amdgcn-amd-amdhsa-gfx906.s').read_text()
-        assert f'.sgpr_count:     {EXPECTED_SGPR_COUNT}' in assembly
-        assert f'.vgpr_count:     {EXPECTED_VGPR_COUNT}' in assembly
+
+        obj = tmpdir / 'test-hip-amdgcn-amd-amdhsa-gfx906.s'
+        assert obj.is_file()
+
+        assembly = obj.read_text()
+
+        functions = list(re.finditer(
+            pattern = r'(_[A-Za-z0-9_]+):[ ]+; @_[A-Za-z0-9_]+',
+            string = assembly,
+        ))
+        assert len(functions) == 2
+
+        logging.info(f'Found functions {functions} in {obj}.')
+
+        beg = assembly.find('---\namdhsa.kernels:')
+        end = assembly.find('...\n\n\t.end_amdgpu_metadata')
+
+        amdhsa = yaml.safe_load(io.StringIO(assembly[beg:end]))
+
+        for kernel in amdhsa['amdhsa.kernels']:
+            logging.info(f'Checking register usage for {kernel[".name"]}.')
+            assert kernel['.sgpr_count'] == EXPECTED_SGPR_COUNT[demangle(kernel['.name'])]
+            assert kernel['.vgpr_count'] == EXPECTED_VGPR_COUNT[demangle(kernel['.name'])]
 
 def test_kernel_resource_usage_from_code_object():
     """
@@ -125,7 +181,7 @@ def test_kernel_resource_usage_from_code_object():
         source.write_text(SOURCE_CODE)
         subprocess.check_call(
             args = [
-                'hipcc', '--offload-arch=gfx906',
+                'hipcc', '--offload-arch=gfx906', '-std=c++20',
                 '-Wall', '-Wextra', '-Werror',
                 source,
                 '-o', binary,
@@ -148,7 +204,12 @@ def test_kernel_resource_usage_from_code_object():
         with open(metadata_json, 'r') as f:
             metadata = json.load(f)
 
-        assert len(metadata['amdhsa.kernels']) == 1
-        assert metadata['amdhsa.kernels'][0]['.name']       == '_Z9my_kernelPi'
-        assert metadata['amdhsa.kernels'][0]['.sgpr_count'] == str(EXPECTED_SGPR_COUNT)
-        assert metadata['amdhsa.kernels'][0]['.vgpr_count'] == str(EXPECTED_VGPR_COUNT)
+        assert len(metadata['amdhsa.kernels']) == 2
+
+        assert metadata['amdhsa.kernels'][0]['.name']       == MANGLED['my_kernel']
+        assert metadata['amdhsa.kernels'][0]['.sgpr_count'] == str(EXPECTED_SGPR_COUNT['my_kernel'])
+        assert metadata['amdhsa.kernels'][0]['.vgpr_count'] == str(EXPECTED_VGPR_COUNT['my_kernel'])
+
+        assert metadata['amdhsa.kernels'][1]['.name']       == MANGLED['complicated']
+        assert metadata['amdhsa.kernels'][1]['.sgpr_count'] == str(EXPECTED_SGPR_COUNT['complicated'])
+        assert metadata['amdhsa.kernels'][1]['.vgpr_count'] == str(EXPECTED_VGPR_COUNT['complicated'])
