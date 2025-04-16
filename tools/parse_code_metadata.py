@@ -1,26 +1,55 @@
+import logging
+import os
 import pathlib
 import re
 import subprocess
+import typing
 
 import typeguard
 
 @typeguard.typechecked
-def extract_code_objects(binary : pathlib.Path, arch : str = 'gfx906') -> list[pathlib.Path]:
+def get_llvm_objdump_default() -> pathlib.Path:
     """
-    Extract code objects for `arch` from `binary` using `roc-obj-ls` and `roc-obj-extract`.
+    Get the default path to `llvm-objdump`, using `ROCM_PATH` if available.
     """
-    roc_obj_ls = subprocess.check_output(['roc-obj-ls', '-v', binary]).decode()
+    return pathlib.Path(os.environ.get('ROCM_PATH', default = '/opt/rocm')) / 'llvm' / 'bin' / 'llvm-objdump'
 
-    output_dir_cos = binary.with_suffix('.cos')
-    output_dir_cos.mkdir(exist_ok = True)
+@typeguard.typechecked
+def amdgcn(target : pathlib.Path, arch : str) -> typing.Callable[[pathlib.Path], bool]:
+    """
+    Create a matcher for `amdgcn-amd-amdhsa` files matching `target` and `arch`.
+    """
+    pattern = rf'{target.name}:[0-9].hipv[0-9]-amdgcn-amd-amdhsa--{arch}'
 
-    cos = []
+    @typeguard.typechecked
+    def matching(path : pathlib.Path) -> bool:
+        if not path.is_file():
+            return False
+        return re.match(
+            pattern = pattern,
+            string  = path.name,
+        ) is not None
 
-    for line in roc_obj_ls.splitlines():
-        if f'amdhsa--{arch}' in line:
-            _, _, uri = line.split()
-            match = re.match(pattern = rf'file://{binary}#offset=([0-9]+)&size=([0-9]+)', string = uri)
-            subprocess.check_call(['roc-obj-extract', '-v', '-o', output_dir_cos, uri])
-            cos.append(output_dir_cos / (binary.name + f'-offset{match.group(1)}-size{match.group(2)}.co'))
+    return matching
 
-    return cos
+@typeguard.typechecked
+def extract_code_objects(*,
+    binary : pathlib.Path,
+    arch : str = 'gfx906',
+    llvm_objdump : pathlib.Path = get_llvm_objdump_default(),
+) -> typing.List[pathlib.Path]:
+    """
+    Extract code objects for `arch` from `binary` using `llvm_objdump`.
+    """
+    # As of ROCm 6.4.0, 'llvm-objdump' will effectively extract the code objects, but won't print their
+    # path to the stdout. So we'll need to find them.
+    cmd = [
+        llvm_objdump,
+        f'--arch-name={arch}',
+        '--offloading',
+        binary,
+    ]
+    logging.info(f"Extracting code objects from {binary} for {arch} with {cmd}.")
+    subprocess.check_call(cmd)
+
+    return list(filter(amdgcn(target = binary, arch = arch), binary.parent.iterdir()))

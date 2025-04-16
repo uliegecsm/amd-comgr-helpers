@@ -50,7 +50,7 @@ jobs:
                   cache-from: type=registry,ref=${{ needs.set-vars.outputs.CI_IMAGE  }}
                   cache-to: type=inline
                   build-args: |
-                      BASE_IMAGE=rocm/dev-ubuntu-24.04:6.3.1
+                      BASE_IMAGE=rocm/dev-ubuntu-24.04:6.4
                   labels: "org.opencontainers.image.source=${{ github.repositoryUrl }}"
 
     tests-tools:
