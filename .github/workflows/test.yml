@@ -9,6 +9,10 @@ on:
             - main
     workflow_dispatch:
 
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
     REGISTRY: ghcr.io
 
@@ -32,6 +36,14 @@ jobs:
         permissions:
             packages: write
             contents: read
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - base_image: rocm/dev-ubuntu-24.04:6.4.3
+                      tag: 6.4.3
+                    - base_image: rocm/dev-ubuntu-26.04:7.14.0-full
+                      tag: 7.14
         steps:
             - uses: actions/checkout@v7
             - uses: docker/login-action@v4
@@ -46,18 +58,24 @@ jobs:
                   platforms: linux/amd64
                   push: ${{ github.ref == 'refs/heads/main' }}
                   file: docker/dockerfile
-                  tags: ${{ needs.set-vars.outputs.CI_IMAGE }}
-                  cache-from: type=registry,ref=${{ needs.set-vars.outputs.CI_IMAGE  }}
+                  tags: ${{ needs.set-vars.outputs.CI_IMAGE }}:${{ matrix.tag }}
+                  cache-from: type=registry,ref=${{ needs.set-vars.outputs.CI_IMAGE  }}:${{ matrix.tag }}
                   cache-to: type=inline
                   build-args: |
-                      BASE_IMAGE=rocm/dev-ubuntu-24.04:6.4
+                      BASE_IMAGE=${{ matrix.base_image }}
                   labels: "org.opencontainers.image.source=${{ github.repositoryUrl }}"
 
     tests-tools:
         needs: [set-vars, build-image]
         runs-on: ubuntu-latest
         container:
-            image: ${{ needs.set-vars.outputs.CI_IMAGE }}
+            image: ${{ needs.set-vars.outputs.CI_IMAGE }}:${{ matrix.tag }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - tag: 6.4.3
+                    - tag: 7.14
         steps:
             - uses: actions/checkout@v7
             - run: |
@@ -69,9 +87,18 @@ jobs:
         needs: [set-vars, build-image]
         runs-on: ubuntu-latest
         container:
-            image: ${{ needs.set-vars.outputs.CI_IMAGE }}
+            image: ${{ needs.set-vars.outputs.CI_IMAGE }}:${{ matrix.tag }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - tag: 6.4.3
+                    - tag: 7.14
         steps:
             - uses: actions/checkout@v7
+            - name: Prepare.
+              run : |
+                  echo "AMD_COMGR_HELPERS_VERSION=$(jq .amd_comgr_helpers.value version.json -j)" >> $GITHUB_ENV
             - name: Create package.
               run : |
                 cmake -S . --preset=default --warn-uninitialized -Werror=dev
@@ -80,7 +107,7 @@ jobs:
               run : |
                 mkdir -p /opt/amd-comgr-helpers
                 tar --extract --verbose --show-transformed \
-                    --file=build-with-default/amd-comgr-helpers-0.1.1-Linux.tar.gz \
+                    --file=build-with-default/amd-comgr-helpers-${{ env.AMD_COMGR_HELPERS_VERSION }}-Linux.tar.gz \
                     --directory=/opt/amd-comgr-helpers \
                     --strip-components=1
             - name: Test package.

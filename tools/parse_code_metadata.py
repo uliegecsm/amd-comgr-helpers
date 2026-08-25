@@ -19,7 +19,7 @@ def amdgcn(target : pathlib.Path, arch : str) -> typing.Callable[[pathlib.Path],
     """
     Create a matcher for `amdgcn-amd-amdhsa` files matching `target` and `arch`.
     """
-    pattern = rf'{target.name}:[0-9].hipv[0-9]-amdgcn-amd-amdhsa--{arch}'
+    pattern = rf'{target.name}[\.:][0-9].hipv[0-9]-amdgcn-amd-amdhsa--{arch}'
 
     @typeguard.typechecked
     def matching(path : pathlib.Path) -> bool:
@@ -35,7 +35,7 @@ def amdgcn(target : pathlib.Path, arch : str) -> typing.Callable[[pathlib.Path],
 @typeguard.typechecked
 def extract_code_objects(*,
     binary : pathlib.Path,
-    arch : str = 'gfx906',
+    arch : str = 'gfx942',
     llvm_objdump : pathlib.Path = get_llvm_objdump_default(),
 ) -> typing.List[pathlib.Path]:
     """
@@ -43,9 +43,9 @@ def extract_code_objects(*,
     """
     # As of ROCm 6.4.0, 'llvm-objdump' will effectively extract the code objects, but won't print their
     # path to the stdout. So we'll need to find them.
+    # As of ROCm 7.14, the use of `--arch-name` to filter by architecture is broken. 
     cmd = [
         llvm_objdump,
-        f'--arch-name={arch}',
         '--offloading',
         binary,
     ]

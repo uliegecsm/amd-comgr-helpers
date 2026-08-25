@@ -1,6 +1,16 @@
-cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.23 FATAL_ERROR)
 
-project(amd-comgr-helpers LANGUAGES CXX)
+#---- Read the version file.
+file(READ version.json VERSION_JSON)
+
+#---- Get the version of kokkos-utils.
+string(JSON AMD_COMGR_HELPERS_VERSION GET "${VERSION_JSON}" "amd_comgr_helpers" "value")
+
+project(
+    amd-comgr-helpers
+    VERSION ${AMD_COMGR_HELPERS_VERSION}
+    LANGUAGES CXX
+)
 
 include(cmake/modules/amd_comgr.cmake)
 

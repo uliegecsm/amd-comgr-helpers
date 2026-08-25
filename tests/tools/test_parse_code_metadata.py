@@ -78,8 +78,8 @@ int main()
 """
 
 EXPECTED_SGPR_COUNT = {
-    'my_kernel'   : 10,
-    'complicated' : 10,
+    'my_kernel'   : 8,
+    'complicated' : 8,
 }
 EXPECTED_VGPR_COUNT = {
     'my_kernel'   : 2,
@@ -109,7 +109,7 @@ def test_kernel_resource_usage_pass_analysis():
         source.write_text(SOURCE_CODE)
         compilation = subprocess.check_output(
             args = [
-                'hipcc', '--offload-arch=gfx906', '-std=c++20',
+                'hipcc', '--offload-arch=gfx942', '-std=c++20',
                 '-Rpass-analysis=kernel-resource-usage',
                 '-Wall', '-Wextra', '-Werror',
                 source,
@@ -119,11 +119,11 @@ def test_kernel_resource_usage_pass_analysis():
             stderr = subprocess.STDOUT,
         ).decode()
 
-        assert f"test.cpp:22:1: remark:     SGPRs: {EXPECTED_SGPR_COUNT['my_kernel']} [-Rpass-analysis=kernel-resource-usage]" in compilation
-        assert f"test.cpp:22:1: remark:     VGPRs: {EXPECTED_VGPR_COUNT['my_kernel']} [-Rpass-analysis=kernel-resource-usage]" in compilation
+        assert f"SGPRs: {EXPECTED_SGPR_COUNT['my_kernel']} [-Rpass-analysis=kernel-resource-usage]" in compilation
+        assert f"VGPRs: {EXPECTED_VGPR_COUNT['my_kernel']} [-Rpass-analysis=kernel-resource-usage]" in compilation
 
-        assert f"test.cpp:29:1: remark:     SGPRs: {EXPECTED_SGPR_COUNT['complicated']} [-Rpass-analysis=kernel-resource-usage]" in compilation
-        assert f"test.cpp:29:1: remark:     VGPRs: {EXPECTED_VGPR_COUNT['complicated']} [-Rpass-analysis=kernel-resource-usage]" in compilation
+        assert f"SGPRs: {EXPECTED_SGPR_COUNT['complicated']} [-Rpass-analysis=kernel-resource-usage]" in compilation
+        assert f"VGPRs: {EXPECTED_VGPR_COUNT['complicated']} [-Rpass-analysis=kernel-resource-usage]" in compilation
 
 def test_kernel_resource_usage_isa_save_temps():
     """
@@ -137,7 +137,7 @@ def test_kernel_resource_usage_isa_save_temps():
         source.write_text(SOURCE_CODE)
         subprocess.check_call(
             args = [
-                'hipcc', '--offload-arch=gfx906', '-std=c++20',
+                'hipcc', '--offload-arch=gfx942', '-std=c++20',
                 '--save-temps',
                 '-Wall', '-Wextra', '-Werror',
                 source,
@@ -147,7 +147,7 @@ def test_kernel_resource_usage_isa_save_temps():
             stderr = subprocess.STDOUT,
         )
 
-        obj = tmpdir / 'test-hip-amdgcn-amd-amdhsa-gfx906.s'
+        obj = tmpdir / 'test-hip-amdgcn-amd-amdhsa-gfx942.s'
         assert obj.is_file()
 
         assembly = obj.read_text()
@@ -181,14 +181,14 @@ def test_kernel_resource_usage_from_code_object():
         source.write_text(SOURCE_CODE)
         subprocess.check_call(
             args = [
-                'hipcc', '--offload-arch=gfx906', '-std=c++20',
+                'hipcc', '--offload-arch=gfx942', '-std=c++20',
                 '-Wall', '-Wextra', '-Werror',
                 source,
                 '-o', binary,
             ],
             cwd = tmpdir,
         )
-        cos = extract_code_objects(binary = binary, arch = 'gfx906')
+        cos = extract_code_objects(binary = binary, arch = 'gfx942')
         assert len(cos) == 1
 
         metadata_json = tmpdir / 'test.metadata.json'

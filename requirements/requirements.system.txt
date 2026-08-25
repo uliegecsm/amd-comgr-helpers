@@ -1,4 +1,5 @@
 cmake
 git
+jq
 make
 python3-venv
