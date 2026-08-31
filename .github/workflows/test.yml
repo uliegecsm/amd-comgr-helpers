@@ -42,8 +42,8 @@ jobs:
                 include:
                     - base_image: rocm/dev-ubuntu-24.04:6.4.3
                       tag: 6.4.3
-                    - base_image: rocm/dev-ubuntu-26.04:7.14.0-full
-                      tag: 7.14
+                    - base_image: rocm/dev-ubuntu-26.04:10.0.0-full
+                      tag: '10.0.0'
         steps:
             - uses: actions/checkout@v7
             - uses: docker/login-action@v4
@@ -75,7 +75,7 @@ jobs:
             matrix:
                 include:
                     - tag: 6.4.3
-                    - tag: 7.14
+                    - tag: '10.0.0'
         steps:
             - uses: actions/checkout@v7
             - run: |
@@ -93,7 +93,7 @@ jobs:
             matrix:
                 include:
                     - tag: 6.4.3
-                    - tag: 7.14
+                    - tag: '10.0.0'
         steps:
             - uses: actions/checkout@v7
             - name: Prepare.
