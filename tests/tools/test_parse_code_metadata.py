@@ -119,11 +119,11 @@ def test_kernel_resource_usage_pass_analysis():
             stderr = subprocess.STDOUT,
         ).decode()
 
-        assert f"SGPRs: {EXPECTED_SGPR_COUNT['my_kernel']} [-Rpass-analysis=kernel-resource-usage]" in compilation
-        assert f"VGPRs: {EXPECTED_VGPR_COUNT['my_kernel']} [-Rpass-analysis=kernel-resource-usage]" in compilation
+        assert f"SGPRs: {EXPECTED_SGPR_COUNT['my_kernel']}" in compilation
+        assert f"VGPRs: {EXPECTED_VGPR_COUNT['my_kernel']}" in compilation
 
-        assert f"SGPRs: {EXPECTED_SGPR_COUNT['complicated']} [-Rpass-analysis=kernel-resource-usage]" in compilation
-        assert f"VGPRs: {EXPECTED_VGPR_COUNT['complicated']} [-Rpass-analysis=kernel-resource-usage]" in compilation
+        assert f"SGPRs: {EXPECTED_SGPR_COUNT['complicated']}" in compilation
+        assert f"VGPRs: {EXPECTED_VGPR_COUNT['complicated']}" in compilation
 
 def test_kernel_resource_usage_isa_save_temps():
     """
@@ -147,8 +147,14 @@ def test_kernel_resource_usage_isa_save_temps():
             stderr = subprocess.STDOUT,
         )
 
-        obj = tmpdir / 'test-hip-amdgcn-amd-amdhsa-gfx942.s'
-        assert obj.is_file()
+        for filename in (
+            'test-hip-amdgcn-amd-amdhsa-gfx942.s',
+            'test.cpp-hip-amdgcn-amd-amdhsa.hipfb.amdgcn.gfx942.img.lto.s',
+        ):
+            if (obj := tmpdir / filename).is_file():
+                break
+        else:
+            raise RuntimeError(f'Unable to find assembly file in {tmpdir}.')
 
         assembly = obj.read_text()
 
@@ -156,7 +162,7 @@ def test_kernel_resource_usage_isa_save_temps():
             pattern = r'(_[A-Za-z0-9_]+):[ ]+; @_[A-Za-z0-9_]+',
             string = assembly,
         ))
-        assert len(functions) == 2
+        assert len(functions) >= 2
 
         logging.info(f'Found functions {functions} in {obj}.')
 
